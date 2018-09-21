@@ -8,10 +8,14 @@ class Robots
   DEFAULT_TIMEOUT = 3
 
   class ParsedRobots
-
-    def initialize(uri, user_agent, robots_file_io)
+    # We changed the argument list to now take an extra io object of the robots.txt file
+    # Since we don't want to hit the domain to grab the robots.txt file on every request,
+    # we will be caching robots.txt in redis and supplying that here to check if the url is allowed
+    def initialize(uri, user_agent, robots_file_io=nil)
       @last_accessed = Time.at(1)
 
+      # check for the presence of a locally cached robots.txt file io object that is passed in
+      # if it looks valid, then use it, if not do what the gem did before of reaching for it from the domain
       if robots_file_io && robots_file_io.content_type == "text/plain" && robots_file_io.status == ["200", "OK"]
         io = robots_file_io
       else
@@ -120,6 +124,7 @@ class Robots
     @timeout || DEFAULT_TIMEOUT
   end
 
+  # We changed the argument list to now take an extra io object of the robots.txt file
   def initialize(user_agent, robots_file_io=nil)
     @user_agent = user_agent
     @parsed = {}
@@ -129,6 +134,7 @@ class Robots
   def allowed?(uri)
     uri = URI.parse(uri.to_s) unless uri.is_a?(URI)
     host = uri.host
+    # We changed the argument list to now take an extra io object of the robots.txt file
     @parsed[host] ||= ParsedRobots.new(uri, @user_agent, @robots_file_io)
     @parsed[host].allowed?(uri, @user_agent)
   end
