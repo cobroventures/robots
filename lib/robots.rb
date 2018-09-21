@@ -4,18 +4,22 @@ require "rubygems"
 require "timeout"
 
 class Robots
-  
+
   DEFAULT_TIMEOUT = 3
-  
+
   class ParsedRobots
-    
-    def initialize(uri, user_agent)
+
+    def initialize(uri, user_agent, robots_file_io)
       @last_accessed = Time.at(1)
-      
-      io = Robots.get_robots_txt(uri, user_agent)
-      
-      if !io || io.content_type != "text/plain" || io.status != ["200", "OK"]
-        io = StringIO.new("User-agent: *\nAllow: /\n")
+
+      if robots_file_io && robots_file_io.content_type == "text/plain" && robots_file_io.status == ["200", "OK"]
+        io = robots_file_io
+      else
+        io = Robots.get_robots_txt(uri, user_agent)
+
+        if !io || io.content_type != "text/plain" || io.status != ["200", "OK"]
+          io = StringIO.new("User-agent: *\nAllow: /\n")
+        end
       end
 
       @other = {}
@@ -45,15 +49,15 @@ class Robots
           @other[key] << value
         end
       end
-      
+
       @parsed = true
     end
-    
+
     def allowed?(uri, user_agent)
       return true unless @parsed
       allowed = true
       path = uri.request_uri
-      
+
       @disallows.each do |key, value|
         if user_agent =~ key
           value.each do |rule|
@@ -63,9 +67,9 @@ class Robots
           end
         end
       end
-      
+
       @allows.each do |key, value|
-        unless allowed      
+        unless allowed
           if user_agent =~ key
             value.each do |rule|
               if path =~ rule
@@ -75,21 +79,21 @@ class Robots
           end
         end
       end
-      
+
       if allowed && @delays[user_agent]
         sleep @delays[user_agent] - (Time.now - @last_accessed)
         @last_accessed = Time.now
       end
-      
+
       return allowed
     end
-    
+
     def other_values
       @other
     end
-    
+
   protected
-    
+
     def to_regex(pattern)
       return /should-not-match-anything-123456789/ if pattern.strip.empty?
       pattern = Regexp.escape(pattern)
@@ -97,37 +101,38 @@ class Robots
       Regexp.compile("^#{pattern}")
     end
   end
-  
+
   def self.get_robots_txt(uri, user_agent)
     begin
       Timeout::timeout(Robots.timeout) do
         io = URI.join(uri.to_s, "/robots.txt").open("User-Agent" => user_agent) rescue nil
-      end 
+      end
     rescue Timeout::Error
       STDERR.puts "robots.txt request timed out"
     end
   end
-  
+
   def self.timeout=(t)
     @timeout = t
   end
-  
+
   def self.timeout
     @timeout || DEFAULT_TIMEOUT
   end
-  
-  def initialize(user_agent)
+
+  def initialize(user_agent, robots_file_io=nil)
     @user_agent = user_agent
     @parsed = {}
+    @robots_file_io = robots_file_io
   end
-  
+
   def allowed?(uri)
     uri = URI.parse(uri.to_s) unless uri.is_a?(URI)
     host = uri.host
-    @parsed[host] ||= ParsedRobots.new(uri, @user_agent)
+    @parsed[host] ||= ParsedRobots.new(uri, @user_agent, @robots_file_io)
     @parsed[host].allowed?(uri, @user_agent)
   end
-  
+
   def other_values(uri)
     uri = URI.parse(uri.to_s) unless uri.is_a?(URI)
     host = uri.host
